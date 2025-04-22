@@ -25,6 +25,15 @@ class AdviceResponse(BaseModel):
     reason: str
     next_meal: str
 
+class NutritionInfo(BaseModel):
+    calories: int
+    protein: int
+    carbs: int
+    fat: int
+
+    class Config:
+        from_attributes = True
+
 class MealRead(BaseModel):
     id: int
     user_id: int
@@ -32,7 +41,7 @@ class MealRead(BaseModel):
     image_path: str
     food_items: Dict[str, Any]
     nutrition_info: Dict[str, Any]
-    feedback: AdviceResponse
+    feedback: Dict[str, Any]
 
     class Config:
         from_attributes = True

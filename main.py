@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
@@ -44,7 +45,8 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db)):
 @app.post("/analyze_meal", response_model=MealRead)
 async def analyze_meal_route(user_id: int = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
-        return await analyze_meal(db, user_id, file)
+        result = await analyze_meal(db, user_id, file)
+        return jsonable_encoder(result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
