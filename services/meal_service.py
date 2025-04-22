@@ -7,15 +7,13 @@ from fastapi import HTTPException, UploadFile
 from models import Meal
 from schemas import AdviceResponse, MealRead, NutritionInfo
 from services.user_service import get_user
-from openai import OpenAI
+from services.openai_service import call_openai
 import base64
 from datetime import date
 
 # Set your OpenAI API key
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
-# Initialize OpenAI Responses client
-client = OpenAI(api_key=openai_api_key)
 
 def detect_food_items(image_path: str) -> List[str]:
     """
@@ -35,18 +33,14 @@ def detect_food_items(image_path: str) -> List[str]:
         "required": ["food_items"],
         "additionalProperties": False,
     }
-    response = client.responses.create(
-        model="gpt-4o",
-        input=[
-            {"role": "user", "content": [
-                {"type": "input_text", "text": "List all food items you see in this photo. Return strictly a JSON object with a single key \"food_items\" mapping to an array of strings. Do not include any other keys."},
-                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{image_b64}"}
-            ]}
-        ],
-        text={"format": {"type": "json_schema", "name": "food_items", "schema": schema, "strict": True}},
-        max_output_tokens=200,
-    )
-    content = response.output_text
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "input_text", "text": "List all food items you see in this photo."},
+            {"type": "input_image", "image_url": f"data:image/jpeg;base64,{image_b64}"}
+        ]
+    }]
+    content = call_openai(messages, schema, "food_items", max_output_tokens=200)
     try:
         obj = json.loads(content)
         return obj["food_items"]
@@ -70,16 +64,11 @@ def estimate_nutrition(food_items: List[str]) -> Dict[str, Any]:
         "required": ["calories", "protein", "carbs", "fat"],
         "additionalProperties": False,
     }
-    response = client.responses.create(
-        model="gpt-4o",
-        input=[
-            {"role": "system", "content": "You are a knowledgeable nutrition assistant."},
-            {"role": "user", "content": f"Estimate total nutrition for these items: {food_items}."}
-        ],
-        text={"format": {"type": "json_schema", "name": "nutrition_info", "schema": schema, "strict": True}},
-        temperature=0.2,
-    )
-    content = response.output_text
+    messages = [
+        {"role": "system", "content": "You are a knowledgeable nutrition assistant."},
+        {"role": "user", "content": f"Estimate total nutrition for these items as accurately as possible: {food_items}."}
+    ]
+    content = call_openai(messages, schema, "nutrition_info", temperature=0.2)
     try:
         nutrition = NutritionInfo.model_validate_json(content)
         return nutrition.model_dump()
@@ -120,13 +109,13 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
             })
 
     # Prepare prompt for AI
-    user_profile = user.dict()
+    user_profile = user.model_dump()
     prompt = (
-        f"User profile: {json.dumps(user_profile)}."
-        f"Today's meals: {json.dumps(todays_meals)}."
+        f"This is the user profile: {json.dumps(user_profile)}."
+        f"The user had these meals today: {json.dumps(todays_meals)}."
         f"Current meal: {json.dumps(food_items)} with nutrition {json.dumps(nutrition_info)}."
-        "Based on today's meals, provide dietary advice for the next meal in a friendly, coach-like tone."
-        "Speak like a personal health coach. Respond strictly in JSON with keys: advice, reason, next_meal."
+        "taking into consideration the nutritional info of the meals the user had today, provide advice on the current meal the user is having, reason for that advice and the suggested next meal the user should had and why in a friendly, coach-like tone."
+        "Speak like a friendly personal health coach."
     )
     # Generate advice using Structured Outputs (JSON Schema)
     advice_schema = {
@@ -139,16 +128,11 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
         "required": ["advice", "reason", "next_meal"],
         "additionalProperties": False,
     }
-    response = client.responses.create(
-        model="gpt-4o",
-        input=[
-            {"role": "system", "content": "You are a friendly personal health coach. Speak with empathy and encouragement."},
-            {"role": "user", "content": prompt}
-        ],
-        text={"format": {"type": "json_schema", "name": "advice_response", "schema": advice_schema, "strict": True}},
-        temperature=0.7,
-    )
-    content = response.output_text
+    messages = [
+        {"role": "system", "content": "You are a friendly personal health coach. Speak with empathy and encouragement."},
+        {"role": "user", "content": prompt}
+    ]
+    content = call_openai(messages, advice_schema, "advice_response", temperature=0.7)
     try:
         feedback = AdviceResponse.model_validate_json(content).model_dump()
     except Exception as e:
