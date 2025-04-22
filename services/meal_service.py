@@ -108,15 +108,40 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
                 "feedback": m.feedback.dict() if hasattr(m.feedback, "dict") else m.feedback
             })
 
-    # Prepare prompt for AI
-    user_profile = user.model_dump()
-    prompt = (
-        f"This is the user profile: {json.dumps(user_profile)}."
-        f"The user had these meals today: {json.dumps(todays_meals)}."
-        f"Current meal: {json.dumps(food_items)} with nutrition {json.dumps(nutrition_info)}."
-        "taking into consideration the nutritional info of the meals the user had today, provide advice on the current meal the user is having, reason for that advice and the suggested next meal the user should had and why in a friendly, coach-like tone."
-        "Speak like a friendly personal health coach."
+    # Build profile summary
+    profile = user.model_dump()
+    profile_str = (
+        f"Age: {profile['age']} yrs, "
+        f"Weight: {profile['weight']} kg, "
+        f"Health cond.: {profile.get('health_conditions','none')}, "
+        f"Diet prefs: {profile.get('diet_preferences','none')}, "
+        f"Goals: {profile.get('goals','none')}."
     )
+
+    # Summarize macro totals
+    macro_totals = {
+        "calories": sum(m["nutrition_info"]["calories"] for m in todays_meals),
+        "protein": sum(m["nutrition_info"]["protein"] for m in todays_meals),
+        "carbs":    sum(m["nutrition_info"]["carbs"] for m in todays_meals),
+        "fat":      sum(m["nutrition_info"]["fat"] for m in todays_meals)
+    }
+
+    # Prepare prompt for AI
+    prompt = (
+        "You are NutriCoach, your friendly personal nutrition coach. "
+        f"{profile_str} "
+        f"Meals today so far: {json.dumps(todays_meals)}. "
+        f"Total intake: {macro_totals['calories']} kcal; "
+        f"{macro_totals['protein']}g protein, {macro_totals['carbs']}g carbs, {macro_totals['fat']}g fat. "
+        f"Your current meal: {json.dumps(food_items)} with nutrition {json.dumps(nutrition_info)}. "
+        "First, acknowledge this meal—highlight positives, remind about mindful eating, "
+        "and how it contributes to your daily goals. "
+        "Do not suggest altering the current meal. "
+        "Next, recommend the next meal: specify foods, approximate portions, and explain why it complements today's intake, "
+        "supports your personal goals, and balances remaining macros. "
+        "Respond strictly in JSON with keys: advice, reason, next_meal."
+    )
+
     # Generate advice using Structured Outputs (JSON Schema)
     advice_schema = {
         "type": "object",
