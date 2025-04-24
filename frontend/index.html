@@ -4,30 +4,115 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Turtle Meal Analyzer</title>
+    <style>
+        body{margin:0;font-family:Arial,sans-serif;background:#f0f4f8;color:#333;}
+        .tab-content{display:none;padding:20px;padding-bottom:80px;}
+        .tab-content.active{display:block;}
+        .bottom-nav{position:fixed;bottom:0;left:0;right:0;height:60px;background:#fff;box-shadow:0 -1px 5px rgba(0,0,0,0.1);display:flex;}
+        .bottom-nav button{flex:1;border:none;background:none;font-size:14px;color:#666;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+        .bottom-nav button.active{color:#007bff;}
+        input,button{font-size:16px;}
+        button{padding:10px;background:#007bff;color:#fff;border:none;border-radius:5px;}
+        input[type="text"],input[type="number"],input[type="file"]{width:100%;padding:8px;margin-bottom:10px;border:1px solid #ccc;border-radius:5px;}
+        .card{background:#fff;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.1);margin-bottom:20px;overflow:hidden;}
+        .card-img{width:100%;max-height:200px;object-fit:cover;}
+        .card-body{padding:15px;}
+    </style>
 </head>
 <body>
-<h1>Turtle Meal Analyzer</h1>
-<form id="mealForm">
-    <label for="user_id">User ID:</label>
-    <input type="number" id="user_id" name="user_id" required />
-    <br/><br/>
-    <label for="file">Meal Photo:</label>
-    <input type="file" id="file" name="file" accept="image/*" required />
-    <br/><br/>
-    <button type="submit">Analyze Meal</button>
-</form>
-<pre id="result"></pre>
-<script>
-    document.getElementById('mealForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const data = new FormData();
-        data.append('user_id', form.user_id.value);
-        data.append('file', form.file.files[0]);
-        const res = await fetch('/analyze_meal', { method: 'POST', body: data });
-        const json = await res.json();
-        document.getElementById('result').textContent = JSON.stringify(json, null, 2);
-    });
-</script>
+    <h1 style="text-align:center;padding:10px;">Turtle Meal Analyzer</h1>
+    <div id="preview" class="tab-content">
+        <h2>Preview Day</h2>
+        <label for="preview_user_id">User ID:</label>
+        <input type="number" id="preview_user_id" placeholder="Enter user ID"/>
+        <button id="previewButton">Preview Day</button>
+        <div id="previewResult"></div>
+    </div>
+    <div id="log" class="tab-content active">
+        <h2>Log Meal</h2>
+        <form id="mealForm">
+            <label for="user_id">User ID:</label>
+            <input type="number" id="user_id" name="user_id" required />
+            <label for="file">Meal Photo:</label>
+            <input type="file" id="file" name="file" accept="image/*" required />
+            <button type="submit">Analyze Meal</button>
+        </form>
+        <div id="result"></div>
+    </div>
+    <div id="suggest" class="tab-content">
+        <h2>Suggest Next Meal</h2>
+        <label for="suggest_user_id">User ID:</label>
+        <input type="number" id="suggest_user_id" placeholder="Enter user ID"/>
+        <label for="fridgeItems">Fridge Items (comma-separated):</label>
+        <input type="text" id="fridgeItems" placeholder="e.g. eggs, spinach"/>
+        <button id="suggestButton">Suggest Meal</button>
+        <div id="suggestResult"></div>
+    </div>
+    <nav class="bottom-nav">
+        <button data-tab="preview">Preview</button>
+        <button data-tab="log" class="active">Log</button>
+        <button data-tab="suggest">Suggest</button>
+    </nav>
+    <script>
+        const tabs=document.querySelectorAll('.bottom-nav button');
+        const sections=document.querySelectorAll('.tab-content');
+        tabs.forEach(btn=>btn.addEventListener('click',()=>{
+            const t=btn.dataset.tab;
+            sections.forEach(s=>s.id===t?s.classList.add('active'):s.classList.remove('active'));
+            tabs.forEach(b=>b===btn?b.classList.add('active'):b.classList.remove('active'));
+        }));
+        // Render functions
+        function renderMealCard(meal) {
+            return `
+            <div class="card">
+              <img src="${meal.image_path}" class="card-img" />
+              <div class="card-body">
+                <h3>${new Date(meal.timestamp).toLocaleString()}</h3>
+                <p><strong>Food Items:</strong> ${meal.food_items.items.join(', ')}</p>
+                <p><strong>Nutrition:</strong> ${meal.nutrition_info.calories} kcal, ${meal.nutrition_info.protein}g P, ${meal.nutrition_info.carbs}g C, ${meal.nutrition_info.fat}g F</p>
+                <h4>Feedback</h4>
+                <p><strong>Advice:</strong> ${meal.feedback.advice}</p>
+                <p><strong>Reason:</strong> ${meal.feedback.reason}</p>
+                <p><strong>Next Meal:</strong> ${meal.feedback.next_meal}</p>
+              </div>
+            </div>`;
+        }
+        function renderSuggestionCard(sugg) {
+            return `
+            <div class="card">
+              <div class="card-body">
+                <h3>Recommended Meal</h3>
+                <p>${sugg.recommendation}</p>
+                <p><strong>Missing:</strong> ${sugg.missing_ingredients.join(', ')}</p>
+                <p><strong>Reason:</strong> ${sugg.reason}</p>
+              </div>
+            </div>`;
+        }
+        function renderMealList(meals) { return meals.map(renderMealCard).join(''); }
+        
+        document.getElementById('mealForm').addEventListener('submit',async e=>{
+            e.preventDefault();
+            const form=e.target;
+            const data=new FormData();
+            data.append('user_id',form.user_id.value);
+            data.append('file',form.file.files[0]);
+            const res=await fetch('/analyze_meal',{method:'POST',body:data});
+            const json=await res.json();
+            document.getElementById('result').innerHTML = renderMealCard(json);
+        });
+        document.getElementById('previewButton').addEventListener('click',async ()=>{
+            const uid=document.getElementById('preview_user_id').value;
+            const res=await fetch(`/meal_history/${uid}`);
+            const json=await res.json();
+            document.getElementById('previewResult').innerHTML = renderMealList(json);
+        });
+        document.getElementById('suggestButton').addEventListener('click',async ()=>{
+            const uid=document.getElementById('suggest_user_id').value;
+            const items=document.getElementById('fridgeItems').value.split(',').map(i=>i.trim()).filter(Boolean);
+            const res=await fetch('/suggest_meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,fridge_items:items})});
+            const json=await res.json();
+            document.getElementById('suggestResult').innerHTML = renderSuggestionCard(json);
+        });
+    </script>
 </body>
 </html>

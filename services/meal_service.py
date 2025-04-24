@@ -13,6 +13,11 @@ from datetime import date
 
 # GPT API integration uses call_openai; key is loaded by openai_service
 
+DAILY_CALORIES = int(os.getenv("DAILY_CALORIES", "2000"))
+DAILY_PROTEIN = int(os.getenv("DAILY_PROTEIN", "75"))
+DAILY_CARBS = int(os.getenv("DAILY_CARBS", "250"))
+DAILY_FAT = int(os.getenv("DAILY_FAT", "70"))
+
 # Utility to filter today's meals
 def _get_todays_meals(all_history: List[MealRead]) -> List[Dict[str, Any]]:
     today = date.today()
@@ -132,19 +137,26 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
         "fat":      sum(m["nutrition_info"]["fat"] for m in todays_meals)
     }
 
+    # Compute remaining macros based on daily goals
+    daily_goals = {
+        "calories": DAILY_CALORIES,
+        "protein": DAILY_PROTEIN,
+        "carbs": DAILY_CARBS,
+        "fat": DAILY_FAT,
+    }
+    macro_remaining = {k: daily_goals[k] - macro_totals[k] for k in macro_totals}
+
     # Prepare prompt for AI
     prompt = (
         "You are NutriCoach, your friendly personal nutrition coach. "
         f"{profile_str} "
+        f"Daily goals: {json.dumps(daily_goals)}. "
+        f"Intake so far: {json.dumps(macro_totals)}. "
+        f"Remaining macros: {json.dumps(macro_remaining)}. "
         f"Meals today so far: {json.dumps(todays_meals)}. "
-        f"Total intake: {macro_totals['calories']} kcal; "
-        f"{macro_totals['protein']}g protein, {macro_totals['carbs']}g carbs, {macro_totals['fat']}g fat. "
         f"Your current meal: {json.dumps(food_items)} with nutrition {json.dumps(nutrition_info)}. "
-        "First, acknowledge this meal—highlight positives, remind about mindful eating, "
-        "and how it contributes to your daily goals. "
-        "Do not suggest altering the current meal. "
-        "Next, recommend the next meal: specify foods, approximate portions, and explain why it complements today's intake, "
-        "supports your personal goals, and balances remaining macros. "
+        "First, acknowledge this meal—highlight positives, remind about mindful eating, and how it fits into the day's macro balance. "
+        "Next, recommend the next meal: specify foods, approximate portions, and explain how it optimally balances the remaining macros and supports personal goals. "
         "Respond strictly in JSON with keys: advice, reason, next_meal."
     )
 
