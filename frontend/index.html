@@ -20,19 +20,38 @@
     </style>
 </head>
 <body>
+    <!-- Login bar -->
+    <div id="loginSection" style="padding:10px;background:#fff; text-align:center;">
+        <input type="number" id="loginUserId" placeholder="User ID" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <button id="loginButton">Login</button>
+        <p>Don't have an account? <a href="#" id="showSignup">Sign up</a></p>
+    </div>
+    <div id="signupSection" style="display:none; padding:10px; background:#fff; text-align:center;">
+        <input type="number" id="signupAge" placeholder="Age" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;" required/>
+        <input type="number" id="signupWeight" placeholder="Weight" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;" required/>
+        <input type="text" id="signupHealth" placeholder="Health Conditions" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="text" id="signupDiet" placeholder="Diet Preferences" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="text" id="signupGoals" placeholder="Goals" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="number" id="signupCalories" placeholder="Daily Calories" value="2000" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="number" id="signupProtein" placeholder="Daily Protein" value="75" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="number" id="signupCarbs" placeholder="Daily Carbs" value="250" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <input type="number" id="signupFat" placeholder="Daily Fat" value="70" style="padding:8px;border-radius:5px;border:1px solid #ccc; width:60%;"/>
+        <button id="signupButton">Create Account</button>
+        <p>Already have an account? <a href="#" id="showLogin">Log in</a></p>
+    </div>
+    <div id="userInfo" style="display:none;padding:10px;background:#fff;text-align:center;">
+        Logged in as <span id="currentUserId"></span>
+        <button id="logoutButton">Logout</button>
+    </div>
     <h1 style="text-align:center;padding:10px;">Turtle Meal Analyzer</h1>
     <div id="preview" class="tab-content">
         <h2>Preview Day</h2>
-        <label for="preview_user_id">User ID:</label>
-        <input type="number" id="preview_user_id" placeholder="Enter user ID"/>
         <button id="previewButton">Preview Day</button>
         <div id="previewResult"></div>
     </div>
     <div id="log" class="tab-content active">
         <h2>Log Meal</h2>
         <form id="mealForm">
-            <label for="user_id">User ID:</label>
-            <input type="number" id="user_id" name="user_id" required />
             <label for="file">Meal Photo:</label>
             <input type="file" id="file" name="file" accept="image/*" required />
             <button type="submit">Analyze Meal</button>
@@ -41,8 +60,6 @@
     </div>
     <div id="suggest" class="tab-content">
         <h2>Suggest Next Meal</h2>
-        <label for="suggest_user_id">User ID:</label>
-        <input type="number" id="suggest_user_id" placeholder="Enter user ID"/>
         <label for="fridgeItems">Fridge Items (comma-separated):</label>
         <input type="text" id="fridgeItems" placeholder="e.g. eggs, spinach"/>
         <button id="suggestButton">Suggest Meal</button>
@@ -56,6 +73,47 @@
     <script>
         const tabs=document.querySelectorAll('.bottom-nav button');
         const sections=document.querySelectorAll('.tab-content');
+        // Login elements
+        const loginSection = document.getElementById('loginSection');
+        const signupSection = document.getElementById('signupSection');
+        const userInfo = document.getElementById('userInfo');
+        const currentUserId = document.getElementById('currentUserId');
+        const loginUserIdInput = document.getElementById('loginUserId');
+        const loginButton = document.getElementById('loginButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const signupButton = document.getElementById('signupButton');
+        const showSignup = document.getElementById('showSignup');
+        const showLogin = document.getElementById('showLogin');
+        function updateLoginState(){
+            const uid = localStorage.getItem('userId');
+            if(uid){
+                loginSection.style.display='none'; signupSection.style.display='none'; userInfo.style.display='block'; currentUserId.textContent = uid;
+            } else {
+                loginSection.style.display='block'; signupSection.style.display='none'; userInfo.style.display='none';
+            }
+        }
+        loginButton.addEventListener('click',()=>{ const uid=loginUserIdInput.value; localStorage.setItem('userId',uid); updateLoginState(); });
+        logoutButton.addEventListener('click',()=>{ localStorage.removeItem('userId'); updateLoginState(); });
+        showSignup.addEventListener('click', e=>{ e.preventDefault(); loginSection.style.display='none'; signupSection.style.display='block'; });
+        showLogin.addEventListener('click', e=>{ e.preventDefault(); signupSection.style.display='none'; loginSection.style.display='block'; });
+        signupButton.addEventListener('click', async ()=>{
+            const data = {
+                age: parseInt(document.getElementById('signupAge').value),
+                weight: parseFloat(document.getElementById('signupWeight').value),
+                health_conditions: document.getElementById('signupHealth').value,
+                diet_preferences: document.getElementById('signupDiet').value,
+                goals: document.getElementById('signupGoals').value,
+                daily_calories: parseInt(document.getElementById('signupCalories').value),
+                daily_protein: parseInt(document.getElementById('signupProtein').value),
+                daily_carbs: parseInt(document.getElementById('signupCarbs').value),
+                daily_fat: parseInt(document.getElementById('signupFat').value)
+            };
+            const res = await fetch('/user', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+            const user = await res.json();
+            localStorage.setItem('userId', user.id);
+            updateLoginState();
+        });
+        updateLoginState();
         tabs.forEach(btn=>btn.addEventListener('click',()=>{
             const t=btn.dataset.tab;
             sections.forEach(s=>s.id===t?s.classList.add('active'):s.classList.remove('active'));
@@ -91,23 +149,21 @@
         function renderMealList(meals) { return meals.map(renderMealCard).join(''); }
         
         document.getElementById('mealForm').addEventListener('submit',async e=>{
-            e.preventDefault();
-            const form=e.target;
-            const data=new FormData();
-            data.append('user_id',form.user_id.value);
+            e.preventDefault(); const uid = localStorage.getItem('userId'); if(!uid){alert('Please log in.');return;} const form=e.target;
+            const data=new FormData(); data.append('user_id',uid);
             data.append('file',form.file.files[0]);
             const res=await fetch('/analyze_meal',{method:'POST',body:data});
             const json=await res.json();
             document.getElementById('result').innerHTML = renderMealCard(json);
         });
         document.getElementById('previewButton').addEventListener('click',async ()=>{
-            const uid=document.getElementById('preview_user_id').value;
+            const uid = localStorage.getItem('userId'); if(!uid){alert('Please log in.');return;}
             const res=await fetch(`/meal_history/${uid}`);
             const json=await res.json();
             document.getElementById('previewResult').innerHTML = renderMealList(json);
         });
         document.getElementById('suggestButton').addEventListener('click',async ()=>{
-            const uid=document.getElementById('suggest_user_id').value;
+            const uid = localStorage.getItem('userId'); if(!uid){alert('Please log in.');return;}
             const items=document.getElementById('fridgeItems').value.split(',').map(i=>i.trim()).filter(Boolean);
             const res=await fetch('/suggest_meal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:uid,fridge_items:items})});
             const json=await res.json();

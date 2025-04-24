@@ -13,11 +13,6 @@ from datetime import date
 
 # GPT API integration uses call_openai; key is loaded by openai_service
 
-DAILY_CALORIES = int(os.getenv("DAILY_CALORIES", "2000"))
-DAILY_PROTEIN = int(os.getenv("DAILY_PROTEIN", "75"))
-DAILY_CARBS = int(os.getenv("DAILY_CARBS", "250"))
-DAILY_FAT = int(os.getenv("DAILY_FAT", "70"))
-
 # Utility to filter today's meals
 def _get_todays_meals(all_history: List[MealRead]) -> List[Dict[str, Any]]:
     today = date.today()
@@ -137,20 +132,20 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
         "fat":      sum(m["nutrition_info"]["fat"] for m in todays_meals)
     }
 
-    # Compute remaining macros based on daily goals
-    daily_goals = {
-        "calories": DAILY_CALORIES,
-        "protein": DAILY_PROTEIN,
-        "carbs": DAILY_CARBS,
-        "fat": DAILY_FAT,
+    # Compute remaining macros based on user-specific goals
+    user_goals = {
+        "calories": user.daily_calories,
+        "protein": user.daily_protein,
+        "carbs": user.daily_carbs,
+        "fat": user.daily_fat,
     }
-    macro_remaining = {k: daily_goals[k] - macro_totals[k] for k in macro_totals}
+    macro_remaining = {k: user_goals[k] - macro_totals[k] for k in macro_totals}
 
     # Prepare prompt for AI
     prompt = (
         "You are NutriCoach, your friendly personal nutrition coach. "
         f"{profile_str} "
-        f"Daily goals: {json.dumps(daily_goals)}. "
+        f"Daily goals: {json.dumps(user_goals)}. "
         f"Intake so far: {json.dumps(macro_totals)}. "
         f"Remaining macros: {json.dumps(macro_remaining)}. "
         f"Meals today so far: {json.dumps(todays_meals)}. "

@@ -10,6 +10,11 @@ class UserBase(BaseModel):
     health_conditions: Optional[str] = None
     diet_preferences: Optional[str] = None
     goals: Optional[str] = None
+    # per-user daily macro goals
+    daily_calories: int = 2000
+    daily_protein: int = 75
+    daily_carbs: int = 250
+    daily_fat: int = 70
 
 class UserCreate(UserBase):
     id: Optional[int] = None

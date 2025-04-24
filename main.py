@@ -22,6 +22,23 @@ if not db_url:
 engine = create_engine(db_url)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Runtime migrations: add new columns if missing
+from sqlalchemy import inspect, text
+def run_migrations():
+    inspector = inspect(engine)
+    if inspector.has_table("users"):
+        cols = [c["name"] for c in inspector.get_columns("users")]
+        with engine.begin() as conn:
+            if "daily_calories" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN daily_calories INTEGER NOT NULL DEFAULT 2000"))
+            if "daily_protein" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN daily_protein INTEGER NOT NULL DEFAULT 75"))
+            if "daily_carbs" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN daily_carbs INTEGER NOT NULL DEFAULT 250"))
+            if "daily_fat" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN daily_fat INTEGER NOT NULL DEFAULT 70"))
+run_migrations()
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
