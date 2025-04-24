@@ -3,7 +3,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import json
 import pytest
 from fastapi import HTTPException
-from services.meal_service import detect_food_items, estimate_nutrition
+from services.meal_service import detect_food_items, estimate_nutrition, suggest_meal
+from schemas import UserRead
 
 
 def test_detect_food_items_success(monkeypatch, tmp_path):
@@ -51,3 +52,26 @@ def test_estimate_nutrition_invalid_json(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         estimate_nutrition(items)
     assert "Nutrition JSON validation failed" in str(exc.value.detail)
+
+
+# Tests for suggest_meal
+def test_suggest_meal_success(monkeypatch):
+    # stub user and empty history
+    dummy_user = UserRead(id=1, age=30, weight=70.0, health_conditions=None, diet_preferences=None, goals=None)
+    monkeypatch.setattr("services.meal_service.get_user", lambda db, user_id: dummy_user)
+    monkeypatch.setattr("services.meal_service.get_meal_history", lambda db, user_id: [])
+    expected = {"recommendation": "omelette", "missing_ingredients": ["salt"], "reason": "quick protein"}
+    # mock OpenAI call
+    monkeypatch.setattr("services.meal_service.call_openai", lambda messages, schema, name, temperature=0.7: json.dumps(expected))
+    suggestion = suggest_meal(db=None, user_id=1, fridge_items=["eggs", "milk"])
+    assert suggestion == expected
+
+def test_suggest_meal_invalid_json(monkeypatch):
+    # stub user and history
+    dummy_user = UserRead(id=1, age=30, weight=70.0, health_conditions=None, diet_preferences=None, goals=None)
+    monkeypatch.setattr("services.meal_service.get_user", lambda db, user_id: dummy_user)
+    monkeypatch.setattr("services.meal_service.get_meal_history", lambda db, user_id: [])
+    # mock invalid JSON from OpenAI
+    monkeypatch.setattr("services.meal_service.call_openai", lambda messages, schema, name, temperature=0.7: "not-a-json")
+    with pytest.raises(HTTPException):
+        suggest_meal(db=None, user_id=1, fridge_items=["eggs"])

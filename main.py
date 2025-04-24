@@ -6,10 +6,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 from typing import List
-from schemas import UserCreate, UserRead, MealRead
+from schemas import UserCreate, UserRead, MealRead, SuggestRequest, MealSuggestion
 from models import Base
 from services.user_service import create_or_update_user, get_user
-from services.meal_service import analyze_meal, get_meal_history
+from services.meal_service import analyze_meal, get_meal_history, suggest_meal
 
 # Load environment variables
 load_dotenv()
@@ -53,6 +53,14 @@ async def analyze_meal_route(user_id: int = Form(...), file: UploadFile = File(.
 @app.get("/meal_history/{user_id}", response_model=List[MealRead])
 def meal_history_route(user_id: int, db: Session = Depends(get_db)):
     return get_meal_history(db, user_id)
+
+@app.post("/suggest_meal", response_model=MealSuggestion)
+def suggest_meal_route(request: SuggestRequest, db: Session = Depends(get_db)):
+    try:
+        suggestion = suggest_meal(db, request.user_id, request.fridge_items)
+        return suggestion
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():

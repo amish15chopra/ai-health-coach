@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -42,6 +42,20 @@ class MealRead(BaseModel):
     food_items: Dict[str, Any]
     nutrition_info: Dict[str, Any]
     feedback: Dict[str, Any]
+
+    class Config:
+        from_attributes = True
+
+# Request schema for meal suggestion based on fridge ingredients
+class SuggestRequest(BaseModel):
+    user_id: int
+    fridge_items: List[str] = []
+
+# Response schema for meal suggestion
+class MealSuggestion(BaseModel):
+    recommendation: str
+    missing_ingredients: List[str]
+    reason: str
 
     class Config:
         from_attributes = True

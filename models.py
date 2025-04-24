@@ -23,3 +23,4 @@ class Meal(Base):
     food_items = Column(JSON, nullable=False)
     nutrition_info = Column(JSON, nullable=False)
     feedback = Column(JSON, nullable=False)
+

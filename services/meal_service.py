@@ -5,15 +5,38 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
 from models import Meal
-from schemas import AdviceResponse, MealRead, NutritionInfo
+from schemas import AdviceResponse, MealRead, NutritionInfo, MealSuggestion
 from services.user_service import get_user
 from services.openai_service import call_openai
 import base64
 from datetime import date
 
-# Set your OpenAI API key
-openai_api_key = os.getenv("OPENAI_API_KEY")
+# GPT API integration uses call_openai; key is loaded by openai_service
 
+# Utility to filter today's meals
+def _get_todays_meals(all_history: List[MealRead]) -> List[Dict[str, Any]]:
+    today = date.today()
+    return [
+        {
+            "timestamp": m.timestamp.isoformat(),
+            "food_items": m.food_items,
+            "nutrition_info": m.nutrition_info,
+            "feedback": m.feedback if not hasattr(m.feedback, "dict") else m.feedback.dict(),
+        }
+        for m in all_history
+        if m.timestamp.date() == today
+    ]
+
+# Utility to build user profile summary
+def _build_profile_str(user) -> str:
+    profile = user.model_dump()
+    return (
+        f"Age: {profile['age']} yrs, "
+        f"Weight: {profile['weight']} kg, "
+        f"Health cond.: {profile.get('health_conditions','none')}, "
+        f"Diet prefs: {profile.get('diet_preferences','none')}, "
+        f"Goals: {profile.get('goals','none')}."
+    )
 
 def detect_food_items(image_path: str) -> List[str]:
     """
@@ -95,28 +118,11 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
     food_items = {"items": items}
     nutrition_info = estimate_nutrition(items)
 
-    # Fetch today's meal history and prepare for next meal advice
-    all_history = get_meal_history(db, user_id)
-    today = date.today()
-    todays_meals = []
-    for m in all_history:
-        if m.timestamp.date() == today:
-            todays_meals.append({
-                "timestamp": m.timestamp.isoformat(),
-                "food_items": m.food_items,
-                "nutrition_info": m.nutrition_info,
-                "feedback": m.feedback.dict() if hasattr(m.feedback, "dict") else m.feedback
-            })
+    # Prepare today's meals for next meal advice
+    todays_meals = _get_todays_meals(get_meal_history(db, user_id))
 
     # Build profile summary
-    profile = user.model_dump()
-    profile_str = (
-        f"Age: {profile['age']} yrs, "
-        f"Weight: {profile['weight']} kg, "
-        f"Health cond.: {profile.get('health_conditions','none')}, "
-        f"Diet prefs: {profile.get('diet_preferences','none')}, "
-        f"Goals: {profile.get('goals','none')}."
-    )
+    profile_str = _build_profile_str(user)
 
     # Summarize macro totals
     macro_totals = {
@@ -188,3 +194,45 @@ async def analyze_meal(db: Session, user_id: int, file: UploadFile) -> Dict[str,
 def get_meal_history(db: Session, user_id: int) -> List[MealRead]:
     meals = db.query(Meal).filter(Meal.user_id == user_id).order_by(Meal.timestamp.desc()).all()
     return [MealRead.from_orm(m) for m in meals]
+
+
+# Suggest meal using fridge items and meal history
+def suggest_meal(db: Session, user_id: int, fridge_items: List[str]) -> Dict[str, Any]:
+    # Validate user exists
+    user = get_user(db, user_id)
+    # Prepare today's meal history
+    all_history = get_meal_history(db, user_id)
+    todays_meals = _get_todays_meals(all_history)
+    # Build user profile summary
+    profile_str = _build_profile_str(user)
+    # Construct prompt
+    prompt = (
+        "You are NutriCoach, your friendly personal nutrition coach. "
+        f"{profile_str} "
+        f"Meals today so far: {json.dumps(todays_meals)}. "
+        f"Available ingredients in fridge: {json.dumps(fridge_items)}. "
+        "Suggest a meal that uses as many available items as possible, "
+        "and list any missing ingredients you recommend ordering. "
+        "Respond strictly in JSON with keys: recommendation, missing_ingredients, reason."
+    )
+    # Define output schema
+    suggestion_schema = {
+        "type": "object",
+        "properties": {
+            "recommendation": {"type": "string"},
+            "missing_ingredients": {"type": "array", "items": {"type": "string"}},
+            "reason": {"type": "string"},
+        },
+        "required": ["recommendation", "missing_ingredients", "reason"],
+        "additionalProperties": False,
+    }
+    messages = [
+        {"role": "system", "content": "You are a friendly personal health coach. Speak with empathy and encouragement."},
+        {"role": "user", "content": prompt}
+    ]
+    content = call_openai(messages, suggestion_schema, "meal_suggestion", temperature=0.7)
+    try:
+        suggestion = MealSuggestion.model_validate_json(content).model_dump()
+        return suggestion
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Meal suggestion JSON validation failed: {e}")
